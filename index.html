@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GomerPay | GomerCraft</title>
+
+<link rel="stylesheet" href="style.css">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+
+<div class="background"></div>
+
+<header>
+
+<div class="logo">
+
+<img src="assets/logo.png" alt="logo">
+
+<h1>GomerPay</h1>
+
+</div>
+
+</header>
+
+<main>
+
+<h2>Покупка доната</h2>
+
+<p class="subtitle">
+Выберите привилегию, введите ник Minecraft и оплатите.
+</p>
+
+<div class="cards">
+
+<div class="card" data-rank="VIP" data-price="99">
+
+<h3>💚 VIP</h3>
+
+<span class="price">99 ₽</span>
+
+<ul>
+
+<li>✔ Цветной префикс</li>
+<li>✔ Кит VIP</li>
+<li>✔ Дополнительные команды</li>
+
+</ul>
+
+<button>Выбрать</button>
+
+</div>
+
+<div class="card" data-rank="PREMIUM" data-price="199">
+
+<h3>💎 PREMIUM</h3>
+
+<span class="price">199 ₽</span>
+
+<ul>
+
+<li>✔ Всё из VIP</li>
+<li>✔ Больше возможностей</li>
+<li>✔ Дополнительные наборы</li>
+
+</ul>
+
+<button>Выбрать</button>
+
+</div>
+
+<div class="card" data-rank="DELUXE" data-price="399">
+
+<h3>👑 DELUXE</h3>
+
+<span class="price">399 ₽</span>
+
+<ul>
+
+<li>✔ Всё из PREMIUM</li>
+<li>✔ Эксклюзивные функции</li>
+<li>✔ Уникальные возможности</li>
+
+</ul>
+
+<button>Выбрать</button>
+
+</div>
+
+<div class="card" data-rank="GOD" data-price="999">
+
+<h3>🔥 GOD</h3>
+
+<span class="price">999 ₽</span>
+
+<ul>
+
+<li>✔ Всё из DELUXE</li>
+<li>✔ Максимальные возможности</li>
+<li>✔ Лучший донат сервера</li>
+
+</ul>
+
+<button>Выбрать</button>
+
+</div>
+
+</div>
+
+<div class="checkout">
+
+<h3>Оформление заказа</h3>
+
+<input
+id="nickname"
+type="text"
+maxlength="16"
+placeholder="Введите ник Minecraft">
+
+<input
+id="rank"
+type="text"
+readonly
+placeholder="Выберите привилегию">
+
+<input
+id="price"
+type="text"
+readonly
+placeholder="Цена">
+
+<button id="buy">
+Оплатить
+</button>
+
+</div>
+
+</main>
+
+<footer>
+
+© 2026 GomerPay • GomerCraft
+
+</footer>
+
+<script src="script.js"></script>
+
+</body>
+</html>

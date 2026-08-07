@@ -1,0 +1,83 @@
+const cards = document.querySelectorAll(".card");
+const rankInput = document.getElementById("rank");
+const priceInput = document.getElementById("price");
+const nicknameInput = document.getElementById("nickname");
+const buyButton = document.getElementById("buy");
+
+let selectedDonate = null;
+
+cards.forEach(card => {
+
+    card.addEventListener("click", () => {
+
+        cards.forEach(c => c.classList.remove("active"));
+
+        card.classList.add("active");
+
+        selectedDonate = {
+            rank: card.dataset.rank,
+            price: card.dataset.price
+        };
+
+        rankInput.value = selectedDonate.rank;
+        priceInput.value = selectedDonate.price + " ₽";
+
+    });
+
+});
+
+buyButton.addEventListener("click", async () => {
+
+    const nickname = nicknameInput.value.trim();
+
+    if (!selectedDonate) {
+        alert("Выберите привилегию.");
+        return;
+    }
+
+    if (nickname.length < 3 || nickname.length > 16) {
+        alert("Введите корректный ник Minecraft.");
+        return;
+    }
+
+    buyButton.disabled = true;
+    buyButton.textContent = "Создание заказа...";
+
+    try {
+
+        const response = await fetch("https://refurbished-territory-walt-chuck.trycloudflare.com/create-order", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                nickname,
+                rank: selectedDonate.rank
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+
+            window.location.href = data.paymentUrl;
+
+        } else {
+
+            alert(data.message || "Ошибка создания заказа.");
+
+            buyButton.disabled = false;
+            buyButton.textContent = "Оплатить";
+
+        }
+
+    } catch (e) {
+
+        alert("Не удалось подключиться к серверу.");
+
+        buyButton.disabled = false;
+        buyButton.textContent = "Оплатить";
+
+    }
+
+});
