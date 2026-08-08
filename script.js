@@ -56,20 +56,27 @@ buyButton.addEventListener("click", async () => {
             })
         });
 
-        const data = await response.json();
+        const text = await response.text();
 
-        if (data.success) {
+console.log("STATUS:", response.status);
+console.log("RESPONSE:", text);
 
-            window.location.href = data.paymentUrl;
+let data;
 
-        } else {
+try {
+    data = JSON.parse(text);
+} catch (e) {
+    alert("Сервер вернул не JSON:\n" + text);
+    buyButton.disabled = false;
+    buyButton.textContent = "Оплатить";
+    return;
+}
 
-            alert(data.message || "Ошибка создания заказа.");
-
-            buyButton.disabled = false;
-            buyButton.textContent = "Оплатить";
-
-        }
+if (data.success) {
+    window.location.href = data.paymentUrl;
+} else {
+    alert(data.message || "Ошибка создания заказа.");
+}
 
     } catch (e) {
 
