@@ -1,0 +1,16 @@
+{
+  "name": "gomerpay",
+  "version": "1.0.0",
+  "description": "GomerPay",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "rcon-client": "^4.2.5",
+    "sqlite3": "^5.1.7"
+  }
+}
