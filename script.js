@@ -45,7 +45,7 @@ buyButton.addEventListener("click", async () => {
 
     try {
 
-        const response = await fetch("https://refurbished-territory-walt-chuck.trycloudflare.com/create-order", {
+        const response = await fetch("/create-order", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
