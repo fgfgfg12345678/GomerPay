@@ -79,12 +79,11 @@ if (data.success) {
 }
 
     } catch (e) {
+    console.error("FETCH ERROR:", e);
+    alert("Ошибка запроса: " + e.message);
 
-        alert("Не удалось подключиться к серверу.");
-
-        buyButton.disabled = false;
-        buyButton.textContent = "Оплатить";
-
+    buyButton.disabled = false;
+    buyButton.textContent = "Оплатить";
     }
 
 });
