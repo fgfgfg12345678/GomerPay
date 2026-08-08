@@ -1,6 +1,7 @@
 const { giveDonate } = require("./rcon");
 
 const express = require("express");
+const path = require("path");
 const cors = require("cors");
 const crypto = require("crypto");
 const dotenv = require("dotenv");
@@ -51,9 +52,7 @@ const DONATES = {
 
 
 app.get("/", (req, res) => {
-
-    res.send("GomerPay API");
-
+    res.sendFile(path.join(__dirname, "index.html"));
 });
 
 
