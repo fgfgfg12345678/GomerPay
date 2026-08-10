@@ -3,7 +3,6 @@ const { giveDonate } = require("./rcon");
 const express = require("express");
 const path = require("path");
 const cors = require("cors");
-const crypto = require("crypto");
 const dotenv = require("dotenv");
 
 dotenv.config();
@@ -13,88 +12,171 @@ const db = require("./database");
 const app = express();
 
 app.use(cors());
-app.use(express.static(__dirname));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static(__dirname));
 
 const PORT = process.env.PORT || 3000;
 
+// ===============================
+// QIWI QPAY
+// ===============================
 
-const MERCHANT_ID = process.env.FK_MERCHANT_ID;
-const SECRET1 = process.env.FK_SECRET1;
-const SECRET2 = process.env.FK_SECRET2;
+const QIWI_SITE_ID = process.env.QIWI_SITE_ID;
+const QIWI_API_KEY = process.env.QIWI_API_KEY;
 
+const QIWI_API_URL = "https://qpay-api.qiwi.kz";
 
+// ===============================
+// DONATES
+// ===============================
+
+// ВАЖНО:
+// Сейчас цены временно в KZT для тестового QIWI.
+// После успешного теста вернём RUB -> KZT.
 
 const DONATES = {
+VIP: {
+group: "vip",
+price: 100
+},
 
-    VIP: {
-        group: "vip",
-        price: 99
-    },
+```
+PREMIUM: {
+    group: "premium",
+    price: 200
+},
 
-    PREMIUM: {
-        group: "premium",
-        price: 199
-    },
+DELUXE: {
+    group: "deluxe",
+    price: 400
+},
 
-    DELUXE: {
-        group: "deluxe",
-        price: 399
-    },
-
-    GOD: {
-        group: "god",
-        price: 999
-    }
+GOD: {
+    group: "god",
+    price: 1000
+}
+```
 
 };
 
+// ===============================
+// QIWI REQUEST
+// ===============================
 
+async function qiwiRequest(url, options = {}) {
 
-app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "index.html"));
+```
+const response = await fetch(QIWI_API_URL + url, {
+
+    ...options,
+
+    headers: {
+        "Authorization": `Bearer ${QIWI_API_KEY}`,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        ...(options.headers || {})
+    }
+
 });
 
+const text = await response.text();
 
+let data;
 
+try {
+    data = JSON.parse(text);
+} catch {
+    data = text;
+}
 
-// создание платежа
+if (!response.ok) {
 
-app.post("/create-order", (req, res) => {
+    console.log("QIWI ERROR:", response.status, data);
 
+    throw new Error(
+        `QIWI API error ${response.status}`
+    );
+
+}
+
+return data;
+```
+
+}
+
+// ===============================
+// MAIN PAGE
+// ===============================
+
+app.get("/", (req, res) => {
+
+```
+res.sendFile(
+    path.join(__dirname, "index.html")
+);
+```
+
+});
+
+// ===============================
+// CREATE ORDER
+// ===============================
+
+app.post("/create-order", async (req, res) => {
+
+```
+try {
 
     const { nickname, rank } = req.body;
 
-
+    // -------------------------------
+    // Проверка данных
+    // -------------------------------
 
     if (!nickname || !rank) {
 
         return res.json({
-            success:false,
-            message:"Заполните все поля"
+
+            success: false,
+
+            message: "Заполните все поля"
+
         });
 
     }
 
-
+    // -------------------------------
+    // Проверка доната
+    // -------------------------------
 
     if (!DONATES[rank]) {
 
         return res.json({
-            success:false,
-            message:"Неизвестный донат"
+
+            success: false,
+
+            message: "Неизвестный донат"
+
         });
 
     }
 
-
-
     const donate = DONATES[rank];
 
-    const orderId = Date.now().toString();
+    // -------------------------------
+    // Генерируем ID заказа
+    // -------------------------------
 
+    const orderId =
+        "GOMER-" +
+        Date.now() +
+        "-" +
+        Math.floor(Math.random() * 10000);
 
+    // -------------------------------
+    // Сохраняем заказ
+    // -------------------------------
 
     db.run(
 
@@ -118,251 +200,636 @@ app.post("/create-order", (req, res) => {
             "pending"
         ],
 
+        async err => {
 
-        err => {
+            if (err) {
 
-
-            if(err){
-
-                console.log(err);
+                console.log(
+                    "DATABASE ERROR:",
+                    err
+                );
 
                 return res.json({
-                    success:false,
-                    message:"Ошибка базы"
+
+                    success: false,
+
+                    message: "Ошибка базы данных"
+
                 });
 
             }
 
+            try {
 
+                // -------------------------------
+                // Создаём QIWI счёт
+                // -------------------------------
 
+                const expiration =
+                    new Date(
+                        Date.now() + 30 * 60 * 1000
+                    ).toISOString();
 
-            const sign = crypto
-                .createHash("md5")
-                .update(
-                    `${MERCHANT_ID}:${donate.price}:${SECRET1}:${orderId}`
-                )
-                .digest("hex");
+                const qiwiInvoice =
+                    await qiwiRequest(
 
+                        `/sites/${encodeURIComponent(QIWI_SITE_ID)}/bills/${encodeURIComponent(orderId)}`,
 
+                        {
 
+                            method: "PUT",
 
-            const paymentUrl =
-                "https://pay.freekassa.ru/?" +
-                `m=${MERCHANT_ID}` +
-                `&oa=${donate.price}` +
-                `&o=${orderId}` +
-                `&s=${sign}` +
-                `&us_nickname=${encodeURIComponent(nickname)}` +
-                `&us_group=${donate.group}`;
+                            body: JSON.stringify({
 
+                                amount: {
 
+                                    currency: "KZT",
 
-            res.json({
+                                    value:
+                                        donate.price.toFixed(2)
 
-                success:true,
-                paymentUrl
+                                },
 
-            });
+                                expirationDateTime:
+                                    expiration,
 
+                                comment:
+                                    `GomerPay | ${rank} | ${nickname}`,
 
+                                flags: [
+                                    "SALE"
+                                ],
 
-        }
+                                successUrl:
+                                    process.env.SUCCESS_URL ||
+                                    "https://gomerpay.store/?payment=success",
 
-    );
+                                failedUrl:
+                                    process.env.FAILED_URL ||
+                                    "https://gomerpay.store/?payment=failed",
 
-});
+                                customer: {
 
+                                    account:
+                                        orderId,
 
+                                    name:
+                                        nickname
 
+                                }
 
+                            })
 
+                        }
 
+                    );
 
-// webhook FreeKassa
+                console.log(
+                    "[QIWI] Счёт создан:",
+                    qiwiInvoice
+                );
 
-app.post("/webhook", async (req,res)=>{
+                // -------------------------------
+                // Возвращаем ссылку
+                // -------------------------------
 
+                return res.json({
 
-    try {
+                    success: true,
 
+                    paymentUrl:
+                        qiwiInvoice.payUrl,
 
-        console.log("FREEKASSA:",req.body);
+                    orderId:
+                        orderId
 
+                });
 
+            } catch (qiwiError) {
 
-        const {
+                console.log(
+                    "QIWI CREATE ERROR:",
+                    qiwiError
+                );
 
-            MERCHANT_ORDER_ID,
-            AMOUNT,
-            SIGN,
-            us_nickname,
-            us_group
+                // Если QIWI не создал счёт,
+                // удаляем pending-заказ
 
-        } = req.body;
+                db.run(
 
+                    `
+                    UPDATE orders
+                    SET status=?
+                    WHERE order_id=?
+                    `,
 
+                    [
+                        "error",
+                        orderId
+                    ]
 
-        if(
-            !MERCHANT_ORDER_ID ||
-            !SIGN
-        ){
+                );
 
-            return res.status(400).send("BAD");
+                return res.json({
 
-        }
+                    success: false,
 
+                    message:
+                        "Не удалось создать платёж"
 
-
-
-        const mySign = crypto
-            .createHash("md5")
-            .update(
-                `${MERCHANT_ID}:${AMOUNT}:${SECRET2}:${MERCHANT_ORDER_ID}`
-            )
-            .digest("hex");
-
-
-
-
-        if(
-            SIGN !== mySign
-        ){
-
-            console.log("Неверная подпись");
-
-            return res.status(403).send("SIGN ERROR");
-
-        }
-
-
-
-
-        const player = us_nickname;
-        const group = us_group;
-
-
-
-        if(
-            !player ||
-            !group
-        ){
-
-            return res.status(400).send("DATA ERROR");
-
-        }
-
-
-
-
-
-        await giveDonate(
-
-            player,
-
-            group.toUpperCase()
-
-        );
-
-
-
-
-        db.run(
-
-            `
-            UPDATE orders
-            SET status=?
-            WHERE order_id=?
-            `,
-
-            [
-                "paid",
-                MERCHANT_ORDER_ID
-            ]
-
-        );
-
-
-
-
-        console.log(
-            `[DONATE] ${player} получил ${group}`
-        );
-
-
-
-        res.send("YES");
-
-
-
-    }
-    catch(err){
-
-
-        console.log(
-            "Webhook error:",
-            err
-        );
-
-
-        res.status(500).send("ERROR");
-
-
-    }
-
-
-});
-
-
-
-
-
-
-
-
-app.get("/orders",(req,res)=>{
-
-
-    db.all(
-
-        "SELECT * FROM orders ORDER BY id DESC",
-
-        [],
-
-        (err,rows)=>{
-
-
-            if(err){
-
-                return res.json([]);
+                });
 
             }
 
+        }
 
-            res.json(rows);
+    );
 
+} catch (error) {
+
+    console.log(
+        "CREATE ORDER ERROR:",
+        error
+    );
+
+    res.status(500).json({
+
+        success: false,
+
+        message: "Ошибка сервера"
+
+    });
+
+}
+```
+
+});
+
+// ===============================
+// QIWI WEBHOOK
+// ===============================
+
+app.post("/qiwi-webhook", async (req, res) => {
+
+```
+try {
+
+    console.log(
+        "=============================="
+    );
+
+    console.log(
+        "[QIWI WEBHOOK]"
+    );
+
+    console.log(
+        JSON.stringify(
+            req.body,
+            null,
+            2
+        )
+    );
+
+    // -------------------------------
+    // Получаем данные QIWI
+    // -------------------------------
+
+    const payment = req.body;
+
+    const paymentId =
+        payment.paymentId;
+
+    const billId =
+        payment.billId;
+
+    const status =
+        payment.status &&
+        payment.status.value;
+
+    const amount =
+        payment.amount &&
+        payment.amount.value;
+
+    const currency =
+        payment.amount &&
+        payment.amount.currency;
+
+    // -------------------------------
+    // Проверяем обязательные данные
+    // -------------------------------
+
+    if (!paymentId || !billId) {
+
+        console.log(
+            "[QIWI] Некорректный webhook"
+        );
+
+        return res.status(400).send("BAD");
+
+    }
+
+    // -------------------------------
+    // Получаем заказ
+    // -------------------------------
+
+    db.get(
+
+        `
+        SELECT *
+        FROM orders
+        WHERE order_id=?
+        `,
+
+        [
+            billId
+        ],
+
+        async (err, order) => {
+
+            if (err) {
+
+                console.log(
+                    "DATABASE ERROR:",
+                    err
+                );
+
+                return res
+                    .status(500)
+                    .send("ERROR");
+
+            }
+
+            if (!order) {
+
+                console.log(
+                    "[QIWI] Заказ не найден:",
+                    billId
+                );
+
+                return res
+                    .status(404)
+                    .send("ORDER NOT FOUND");
+
+            }
+
+            // -------------------------------
+            // Заказ уже обработан
+            // -------------------------------
+
+            if (order.status === "paid") {
+
+                console.log(
+                    "[QIWI] Заказ уже выдан:",
+                    billId
+                );
+
+                return res.send("OK");
+
+            }
+
+            // -------------------------------
+            // Проверяем статус
+            // -------------------------------
+
+            if (status !== "COMPLETED") {
+
+                console.log(
+                    "[QIWI] Статус:",
+                    status
+                );
+
+                return res.send("OK");
+
+            }
+
+            // -------------------------------
+            // Проверяем валюту
+            // -------------------------------
+
+            if (currency !== "KZT") {
+
+                console.log(
+                    "[QIWI] Неверная валюта:",
+                    currency
+                );
+
+                return res
+                    .status(400)
+                    .send("BAD CURRENCY");
+
+            }
+
+            // -------------------------------
+            // Проверяем сумму
+            // -------------------------------
+
+            const paidAmount =
+                Number(amount);
+
+            const orderAmount =
+                Number(order.price);
+
+            if (
+                !Number.isFinite(paidAmount) ||
+                paidAmount !== orderAmount
+            ) {
+
+                console.log(
+                    "[QIWI] Неверная сумма:",
+                    paidAmount,
+                    "ожидалось:",
+                    orderAmount
+                );
+
+                return res
+                    .status(400)
+                    .send("BAD AMOUNT");
+
+            }
+
+            // -------------------------------
+            // Выдаём донат
+            // -------------------------------
+
+            try {
+
+                await giveDonate(
+
+                    order.nickname,
+
+                    order.donate.toUpperCase()
+
+                );
+
+                // -------------------------------
+                // Обновляем заказ
+                // -------------------------------
+
+                db.run(
+
+                    `
+                    UPDATE orders
+                    SET status=?
+                    WHERE order_id=?
+                    `,
+
+                    [
+                        "paid",
+                        billId
+                    ],
+
+                    updateError => {
+
+                        if (updateError) {
+
+                            console.log(
+                                "DATABASE UPDATE ERROR:",
+                                updateError
+                            );
+
+                        }
+
+                    }
+
+                );
+
+                console.log(
+                    `[DONATE] ${order.nickname} получил ${order.donate}`
+                );
+
+                console.log(
+                    "=============================="
+                );
+
+                return res.send("OK");
+
+            } catch (donateError) {
+
+                console.log(
+                    "[DONATE ERROR]",
+                    donateError
+                );
+
+                return res
+                    .status(500)
+                    .send("DONATE ERROR");
+
+            }
 
         }
 
     );
 
+} catch (error) {
+
+    console.log(
+        "[QIWI WEBHOOK ERROR]",
+        error
+    );
+
+    return res
+        .status(500)
+        .send("ERROR");
+
+}
+```
 
 });
 
+// ===============================
+// CHECK QIWI PAYMENT
+// ===============================
 
+app.get("/qiwi-payment/:orderId", async (req, res) => {
 
+```
+try {
 
+    const orderId =
+        req.params.orderId;
 
+    const payment =
+        await qiwiRequest(
 
+            `/sites/${encodeURIComponent(QIWI_SITE_ID)}/bills/${encodeURIComponent(orderId)}/details`,
 
-app.listen(PORT,()=>{
+            {
+                method: "GET"
+            }
 
+        );
+
+    res.json({
+
+        success: true,
+
+        payment
+
+    });
+
+} catch (error) {
+
+    console.log(
+        "[QIWI STATUS ERROR]",
+        error
+    );
+
+    res.status(500).json({
+
+        success: false,
+
+        message:
+            "Не удалось получить статус платежа"
+
+    });
+
+}
+```
+
+});
+
+// ===============================
+// ORDERS
+// ===============================
+
+app.get("/orders", (req, res) => {
+
+```
+db.all(
+
+    `
+    SELECT *
+    FROM orders
+    ORDER BY id DESC
+    `,
+
+    [],
+
+    (err, rows) => {
+
+        if (err) {
+
+            console.log(
+                "ORDERS ERROR:",
+                err
+            );
+
+            return res.json([]);
+
+        }
+
+        res.json(rows);
+
+    }
+
+);
+```
+
+});
+
+// ===============================
+// TEST
+// ===============================
+
+app.get("/qiwi-test", async (req, res) => {
+
+```
+try {
+
+    const result =
+        await qiwiRequest(
+
+            `/sites/${encodeURIComponent(QIWI_SITE_ID)}/bills/test-${Date.now()}`,
+
+            {
+                method: "PUT",
+
+                body: JSON.stringify({
+
+                    amount: {
+
+                        currency: "KZT",
+
+                        value: "100.00"
+
+                    },
+
+                    expirationDateTime:
+                        new Date(
+                            Date.now() +
+                            30 * 60 * 1000
+                        ).toISOString(),
+
+                    comment:
+                        "GomerPay test",
+
+                    flags: [
+                        "SALE"
+                    ]
+
+                })
+
+            }
+
+        );
+
+    res.json({
+
+        success: true,
+
+        result
+
+    });
+
+} catch (error) {
+
+    console.log(
+        "[QIWI TEST ERROR]",
+        error
+    );
+
+    res.status(500).json({
+
+        success: false,
+
+        message:
+            error.message
+
+    });
+
+}
+```
+
+});
+
+// ===============================
+// START
+// ===============================
+
+app.listen(
+
+```
+PORT,
+
+() => {
 
     console.log("");
     console.log("==========================");
     console.log(" GomerPay запущен");
-    console.log(" http://localhost:"+PORT);
+    console.log(
+        " Порт: " + PORT
+    );
+    console.log(
+        " QIWI Site ID: " +
+        QIWI_SITE_ID
+    );
+    console.log(
+        " QIWI режим: TEST"
+    );
     console.log("==========================");
     console.log("");
 
+}
+```
 
-});
+);
