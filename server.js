@@ -207,8 +207,11 @@ app.post("/create-order", (req, res) => {
                                     "https://gomerpay.store/?payment=success",
 
                                 customer: {
-                                    account: orderId,
-                                    name: nickname
+                                account: orderId,
+                                name: nickname,
+                                ip:
+                                      req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+                                      req.socket.remoteAddress
                                 }
 
                             })
@@ -249,8 +252,7 @@ app.post("/create-order", (req, res) => {
                     success: true,
 
                     paymentUrl:
-                        paymentUrl,
-
+                        `https://gomerpay.store/pay/${orderId}`
                     orderId:
                         orderId
 
@@ -469,6 +471,36 @@ app.post("/qiwi-webhook", async (req, res) => {
 
         return res.status(500).send("ERROR");
     }
+});
+app.get("/pay/:orderId", async (req, res) => {
+
+    try {
+
+        const orderId = req.params.orderId;
+
+        const invoice = await qiwiRequest(
+            `/sites/${encodeURIComponent(QIWI_SITE_ID)}/bills/${encodeURIComponent(orderId)}`,
+            {
+                method: "GET"
+            }
+        );
+
+        if (!invoice.payUrl) {
+            return res.status(404).send("PAYMENT URL NOT FOUND");
+        }
+
+        res.redirect(invoice.payUrl);
+
+    } catch (error) {
+
+        console.log(
+            "[PAY REDIRECT ERROR]",
+            error
+        );
+
+        res.status(500).send("PAYMENT ERROR");
+    }
+
 });
 // ===============================
 // ORDERS
