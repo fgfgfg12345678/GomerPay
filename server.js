@@ -3,7 +3,6 @@ const { giveDonate } = require("./rcon");
 const express = require("express");
 const path = require("path");
 const cors = require("cors");
-const crypto = require("crypto");
 const dotenv = require("dotenv");
 
 dotenv.config();
@@ -22,8 +21,8 @@ const PORT = process.env.PORT || 3000;
 const QIWI_SITE_ID = process.env.QIWI_SITE_ID;
 const QIWI_API_KEY = process.env.QIWI_API_KEY;
 
-const QIWI_PAYFORM_URL =
-    "https://qpay-payform-test.qiwi.kz/api/create";
+const QIWI_API_URL =
+    "https://qpay-api-test.qiwi.kz";
 
 const DONATES = {
     VIP: {
@@ -47,26 +46,86 @@ const DONATES = {
     }
 };
 
+async function qiwiRequest(url, options = {}) {
+
+    const response = await fetch(
+        QIWI_API_URL + url,
+        {
+            ...options,
+
+            headers: {
+                "Authorization":
+                    `Bearer ${QIWI_API_KEY}`,
+
+                "Accept":
+                    "application/json",
+
+                "Content-Type":
+                    "application/json",
+
+                ...(options.headers || {})
+            }
+        }
+    );
+
+    const text =
+        await response.text();
+
+    let data;
+
+    try {
+        data = JSON.parse(text);
+    } catch {
+        data = text;
+    }
+
+    if (!response.ok) {
+
+        console.log(
+            "[QIWI ERROR]",
+            response.status,
+            data
+        );
+
+        throw new Error(
+            `QIWI API error ${response.status}`
+        );
+    }
+
+    return data;
+}
+
 app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "index.html"));
+
+    res.sendFile(
+        path.join(__dirname, "index.html")
+    );
+
 });
+// ===============================
+// CREATE ORDER
+// ===============================
 
 app.post("/create-order", (req, res) => {
 
     const { nickname, rank } = req.body;
 
     if (!nickname || !rank) {
+
         return res.json({
             success: false,
             message: "Заполните все поля"
         });
+
     }
 
     if (!DONATES[rank]) {
+
         return res.json({
             success: false,
             message: "Неизвестный донат"
         });
+
     }
 
     const donate = DONATES[rank];
@@ -76,6 +135,7 @@ app.post("/create-order", (req, res) => {
         Date.now() +
         "-" +
         Math.floor(Math.random() * 10000);
+
 
     db.run(
         `
@@ -96,53 +156,142 @@ app.post("/create-order", (req, res) => {
             donate.price,
             "pending"
         ],
-        (err) => {
+        async (err) => {
 
             if (err) {
-                console.log("[DATABASE ERROR]", err);
+
+                console.log(
+                    "[DATABASE ERROR]",
+                    err
+                );
 
                 return res.json({
                     success: false,
                     message: "Ошибка базы данных"
                 });
+
             }
 
-            const amount = donate.price.toFixed(2);
-            const currency = "KZT";
+            try {
 
-            const signString =
-                `${amount}|${currency}|${QIWI_SITE_ID}`;
+                const expiration =
+                    new Date(
+                        Date.now() +
+                        30 * 60 * 1000
+                    ).toISOString();
 
-            const sign = crypto
-                .createHmac("sha256", QIWI_API_KEY)
-                .update(signString)
-                .digest("hex");
 
-            const params = new URLSearchParams({
-                siteId: QIWI_SITE_ID,
-                amount: amount,
-                currency: currency,
-                account: orderId,
-                comment: `GomerPay ${rank} ${nickname}`,
-                successUrl:
-                    "https://gomerpay.store/?payment=success",
-                failedUrl:
-                    "https://gomerpay.store/?payment=failed",
-                sign: sign
-            });
+                const invoice =
+                    await qiwiRequest(
 
-            const paymentUrl =
-                `${QIWI_PAYFORM_URL}?${params.toString()}`;
+                        `/sites/${encodeURIComponent(QIWI_SITE_ID)}/bills/${encodeURIComponent(orderId)}`,
 
-            console.log("[QIWI] Payment URL:", paymentUrl);
+                        {
+                            method: "PUT",
 
-            return res.json({
-                success: true,
-                paymentUrl: paymentUrl,
-                orderId: orderId
-            });
+                            body: JSON.stringify({
+
+                                amount: {
+                                    currency: "KZT",
+                                    value:
+                                        donate.price.toFixed(2)
+                                },
+
+                                expirationDateTime:
+                                    expiration,
+
+                                comment:
+                                    `GomerPay | ${rank} | ${nickname}`,
+
+                                successUrl:
+                                    "https://gomerpay.store/?payment=success",
+
+                                customer: {
+                                    account: orderId,
+                                    name: nickname
+                                }
+
+                            })
+                        }
+                    );
+
+
+                console.log(
+                    "[QIWI] Invoice:",
+                    invoice
+                );
+
+
+                const paymentUrl =
+                    invoice.payUrl ||
+                    invoice.payUrlShort ||
+                    invoice.url;
+
+
+                if (!paymentUrl) {
+
+                    console.log(
+                        "[QIWI] Не найден payUrl:",
+                        invoice
+                    );
+
+                    return res.json({
+                        success: false,
+                        message:
+                            "QIWI не вернул ссылку на оплату"
+                    });
+
+                }
+
+
+                return res.json({
+
+                    success: true,
+
+                    paymentUrl:
+                        paymentUrl,
+
+                    orderId:
+                        orderId
+
+                });
+
+
+            } catch (error) {
+
+                console.log(
+                    "[QIWI CREATE ERROR]",
+                    error
+                );
+
+
+                db.run(
+                    `
+                    UPDATE orders
+                    SET status=?
+                    WHERE order_id=?
+                    `,
+                    [
+                        "error",
+                        orderId
+                    ]
+                );
+
+
+                return res.json({
+
+                    success: false,
+
+                    message:
+                        "Не удалось создать платёж"
+
+                });
+
+            }
+
         }
     );
+
 });
 // ===============================
 // QIWI WEBHOOK
@@ -159,12 +308,25 @@ app.post("/qiwi-webhook", async (req, res) => {
 
         const payment = req.body;
 
-        const billId = payment.account || payment.billId;
-        const status = payment.status?.value;
-        const amount = payment.amount?.value;
-        const currency = payment.amount?.currency;
+        const billId =
+            payment.billId ||
+            payment.account ||
+            payment.bill?.billId;
+
+        const status =
+            payment.status?.value ||
+            payment.status;
+
+        const amount =
+            payment.amount?.value ||
+            payment.bill?.amount?.value;
+
+        const currency =
+            payment.amount?.currency ||
+            payment.bill?.amount?.currency;
 
         if (!billId) {
+            console.log("[QIWI] billId отсутствует");
             return res.status(400).send("BAD");
         }
 
@@ -178,17 +340,24 @@ app.post("/qiwi-webhook", async (req, res) => {
             async (err, order) => {
 
                 if (err) {
-                    console.log("[DATABASE ERROR]", err);
+
+                    console.log(
+                        "[DATABASE ERROR]",
+                        err
+                    );
+
                     return res.status(500).send("ERROR");
                 }
 
                 if (!order) {
+
                     console.log(
                         "[QIWI] Заказ не найден:",
                         billId
                     );
 
-                    return res.status(404).send("ORDER NOT FOUND");
+                    return res.status(404)
+                        .send("ORDER NOT FOUND");
                 }
 
                 if (order.status === "paid") {
@@ -199,6 +368,7 @@ app.post("/qiwi-webhook", async (req, res) => {
                     status !== "COMPLETED" &&
                     status !== "PAID"
                 ) {
+
                     console.log(
                         "[QIWI] Статус:",
                         status
@@ -208,21 +378,27 @@ app.post("/qiwi-webhook", async (req, res) => {
                 }
 
                 if (currency !== "KZT") {
+
                     console.log(
                         "[QIWI] Неверная валюта:",
                         currency
                     );
 
-                    return res.status(400).send("BAD CURRENCY");
+                    return res.status(400)
+                        .send("BAD CURRENCY");
                 }
 
-                const paidAmount = Number(amount);
-                const orderAmount = Number(order.price);
+                const paidAmount =
+                    Number(amount);
+
+                const orderAmount =
+                    Number(order.price);
 
                 if (
                     !Number.isFinite(paidAmount) ||
                     paidAmount !== orderAmount
                 ) {
+
                     console.log(
                         "[QIWI] Неверная сумма:",
                         paidAmount,
@@ -230,7 +406,8 @@ app.post("/qiwi-webhook", async (req, res) => {
                         orderAmount
                     );
 
-                    return res.status(400).send("BAD AMOUNT");
+                    return res.status(400)
+                        .send("BAD AMOUNT");
                 }
 
                 try {
@@ -253,10 +430,12 @@ app.post("/qiwi-webhook", async (req, res) => {
                         (updateError) => {
 
                             if (updateError) {
+
                                 console.log(
                                     "[DATABASE UPDATE ERROR]",
                                     updateError
                                 );
+
                             }
 
                         }
@@ -307,7 +486,12 @@ app.get("/orders", (req, res) => {
         (err, rows) => {
 
             if (err) {
-                console.log("[ORDERS ERROR]", err);
+
+                console.log(
+                    "[ORDERS ERROR]",
+                    err
+                );
+
                 return res.json([]);
             }
 
