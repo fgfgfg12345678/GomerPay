@@ -269,24 +269,6 @@ app.post("/create-order", (req, res) => {
 
 });
 
-                console.log(
-                    "[QIWI] Invoice created:",
-                    invoice
-                );
-
-
-                return res.json({
-
-                    success: true,
-
-                    paymentUrl:
-                        invoice.payUrl,
-
-                    orderId:
-                        orderId
-
-                });
-
 
             } catch (error) {
 
