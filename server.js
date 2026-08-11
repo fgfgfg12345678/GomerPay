@@ -25,7 +25,7 @@ const PORT = process.env.PORT || 3000;
 const QIWI_SITE_ID = process.env.QIWI_SITE_ID;
 const QIWI_API_KEY = process.env.QIWI_API_KEY;
 
-const QIWI_API_URL = "https://qpay-api.qiwi.kz";
+const QIWI_API_URL = "https://qpay-api-test.qiwi.kz";
 
 // ===============================
 // DONATES
