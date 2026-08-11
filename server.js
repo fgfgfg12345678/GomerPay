@@ -238,7 +238,11 @@ app.post("/create-order", (req, res) => {
                                         orderId,
 
                                     name:
-                                        nickname
+                                        nickname,
+                                    ip:
+                                        req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+                                        req.socket.remoteAddress
+
 
                                 }
 
