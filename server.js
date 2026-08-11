@@ -4,6 +4,7 @@ const express = require("express");
 const path = require("path");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const crypto = require("crypto");
 
 dotenv.config();
 
@@ -25,7 +26,8 @@ const PORT = process.env.PORT || 3000;
 const QIWI_SITE_ID = process.env.QIWI_SITE_ID;
 const QIWI_API_KEY = process.env.QIWI_API_KEY;
 
-const QIWI_API_URL = "https://qpay-api-test.qiwi.kz";
+const QIWI_PAYFORM_URL =
+    "https://qpay-payform-test.qiwi.kz/api/create";
 
 // ===============================
 // DONATES
@@ -168,7 +170,7 @@ app.post("/create-order", (req, res) => {
             "pending"
         ],
 
-        async (err) => {
+        (err) => {
 
             if (err) {
 
@@ -185,73 +187,87 @@ app.post("/create-order", (req, res) => {
             }
 
 
-            try {
+            const amount =
+                donate.price.toFixed(2);
 
-                const expiration =
-                    new Date(
-                        Date.now() +
-                        30 * 60 * 1000
-                    ).toISOString();
+            const currency =
+                "KZT";
 
 
-                const invoice =
-                    await qiwiRequest(
+            // Строка для подписи:
+            // amount|currency|siteId
 
-                        `/sites/${encodeURIComponent(QIWI_SITE_ID)}/bills/${encodeURIComponent(orderId)}`,
-
-                        {
-
-                            method: "PUT",
-
-                            body: JSON.stringify({
-
-                                amount: {
-
-                                    currency: "KZT",
-
-                                    value:
-                                        donate.price.toFixed(2)
-
-                                },
-
-                                expirationDateTime:
-                                    expiration,
-
-                                comment:
-                                    `GomerPay | ${rank} | ${nickname}`,
-
-                                flags: [
-                                    "SALE"
-                                ],
-
-                                successUrl:
-                                    process.env.SUCCESS_URL ||
-                                    "https://gomerpay.store/?payment=success",
-
-                                failedUrl:
-                                    process.env.FAILED_URL ||
-                                    "https://gomerpay.store/?payment=failed",
-
-                                customer: {
-
-                                    account:
-                                        orderId,
-
-                                    name:
-                                        nickname,
-                                    ip:
-                                        req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-                                        req.socket.remoteAddress
+            const signString =
+                `${amount}|${currency}|${QIWI_SITE_ID}`;
 
 
-                                }
+            const sign =
+                crypto
+                    .createHmac(
+                        "sha256",
+                        QIWI_API_KEY
+                    )
+                    .update(signString)
+                    .digest("hex");
 
-                            })
 
-                        }
+            const params =
+                new URLSearchParams({
 
-                    );
+                    siteId:
+                        QIWI_SITE_ID,
 
+                    amount:
+                        amount,
+
+                    currency:
+                        currency,
+
+                    account:
+                        orderId,
+
+                    comment:
+                        `GomerPay ${rank} ${nickname}`,
+
+                    successUrl:
+                        "https://gomerpay.store/?payment=success",
+
+                    failedUrl:
+                        "https://gomerpay.store/?payment=failed",
+
+                    sign:
+                        sign
+
+                });
+
+
+            const paymentUrl =
+                `${QIWI_PAYFORM_URL}?${params.toString()}`;
+
+
+            console.log(
+                "[QIWI] Payment URL:",
+                paymentUrl
+            );
+
+
+            return res.json({
+
+                success: true,
+
+                paymentUrl:
+                    paymentUrl,
+
+                orderId:
+                    orderId
+
+            });
+
+        }
+
+    );
+
+});
 
                 console.log(
                     "[QIWI] Invoice created:",
