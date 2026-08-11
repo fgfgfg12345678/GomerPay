@@ -55,51 +55,7 @@ const DONATES = {
     }
 };
 
-// ===============================
-// QIWI REQUEST
-// ===============================
 
-async function qiwiRequest(url, options = {}) {
-
-    const response = await fetch(
-        QIWI_API_URL + url,
-        {
-            ...options,
-
-            headers: {
-                "Authorization": `Bearer ${QIWI_API_KEY}`,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                ...(options.headers || {})
-            }
-        }
-    );
-
-    const text = await response.text();
-
-    let data;
-
-    try {
-        data = JSON.parse(text);
-    } catch {
-        data = text;
-    }
-
-    if (!response.ok) {
-
-        console.log(
-            "[QIWI ERROR]",
-            response.status,
-            data
-        );
-
-        throw new Error(
-            `QIWI API error ${response.status}`
-        );
-    }
-
-    return data;
-}
 // ===============================
 // MAIN PAGE
 // ===============================
