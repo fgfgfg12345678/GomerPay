@@ -252,7 +252,7 @@ app.post("/create-order", (req, res) => {
                     success: true,
 
                     paymentUrl:
-                        `https://gomerpay.store/pay/${orderId}`
+                        `https://gomerpay.store/pay/${orderId}`,
                     orderId:
                         orderId
 
